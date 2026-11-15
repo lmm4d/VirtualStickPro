@@ -110,7 +110,7 @@ CAPSLOCK  NUM0-NUM9  MULTIPLY ADD SUBTRACT DECIMAL DIVIDE
 
 ---
 
-## 摇杆手感（和平精英式）
+## 摇杆手感
 
 - **大圈只在按下时变亮**，平时只是一道淡淡的轮廓，不抢视线
 - **小圈（摇杆帽）很小**，跟着手指走
@@ -155,7 +155,7 @@ CAPSLOCK  NUM0-NUM9  MULTIPLY ADD SUBTRACT DECIMAL DIVIDE
 改成看单位方向向量在 x / y 上的分量，各自跟一个阈值（0.30）比较 ——
 斜向天然同时超过两个轴，两个键都会按下。
 
-## 四个关键设计（都是踩坑换来的）
+## 四个关键设计
 
 ### 1. 为什么不抢焦点 —— `WS_EX_NOACTIVATE`
 
@@ -347,16 +347,6 @@ csc /target:winexe /out:TouchKeys.exe ^
 2. 跑 `tests/FullTest.exe` 看哪项失败
 3. 加 `--debug` 启动会生成 `touchkeys.log`，里面有每条鼠标消息和按键计算
 
-**按下摇杆游戏切出去了**
-不该发生。确认你跑的是这一版（带 `WS_EX_NOACTIVATE`）。
-用 `tests/FocusTest.exe` 直接验证。
-
-**按钮打不出字 / 改不了名字**
-设置对话框里，只有点了「捕获按键」之后才会拦截按键。
-平时可以直接在文本框里打字。
-
-**控件位置不对**
-换机器缩放比例不同，坐标要重调。编辑模式直接拖最快。
 
 **配置文件在哪**
 程序依次尝试：exe 同目录 → `%APPDATA%\TouchKeys\` → 临时目录。
