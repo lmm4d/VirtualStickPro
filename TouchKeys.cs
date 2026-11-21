@@ -877,7 +877,23 @@ namespace TouchKeys
                 return cfg;
             }
 
-            Dictionary<string, Dictionary<string, string>> ini = ReadIni(path);
+            Dictionary<string, Dictionary<string, string>> ini;
+            try
+            {
+                ini = ReadIni(path);
+            }
+            catch (Exception ex)
+            {
+                // A malformed or temporarily unreadable INI must not prevent the
+                // overlay from starting. Preserve the user's file for recovery.
+                string backup = path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                try { File.Copy(path, backup, false); } catch { backup = "(备份失败)"; }
+                OverlayForm.Log("【配置异常】无法读取 " + path + "：" + ex.Message +
+                    "；备份：" + backup + "；已载入默认配置");
+                cfg.Seed();
+                cfg.Save(path);
+                return cfg;
+            }
 
             Dictionary<string, string> app;
             if (ini.TryGetValue("app", out app))
@@ -925,7 +941,11 @@ namespace TouchKeys
                 cfg.Buttons.Add(item);
             }
 
-            if (cfg.Buttons.Count == 0) cfg.Seed();
+            if (cfg.Buttons.Count == 0)
+            {
+                OverlayForm.Log("【配置异常】配置中没有有效按键，已恢复默认控件");
+                cfg.Seed();
+            }
             return cfg;
         }
 
@@ -995,9 +1015,10 @@ namespace TouchKeys
             {
                 File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
             }
-            catch
+            catch (Exception ex)
             {
                 // 配置写不进去不该让程序崩，运行期配置仍然有效
+                OverlayForm.Log("【配置异常】保存失败 " + path + "：" + ex.Message);
             }
         }
 
@@ -1612,6 +1633,31 @@ namespace TouchKeys
                 return;
             }
 
+            // Animation and touch updates mark only the affected area. Rebuild
+            // that area on the canvas before copying it into the layered window.
+            Rectangle dirty = Rectangle.Intersect(_dirty, new Rectangle(0, 0, w, h));
+            _dirty = Rectangle.Empty;
+            if (dirty.IsEmpty) return;
+
+            using (Graphics g = Graphics.FromImage(_canvas))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                g.SetClip(dirty);
+                g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                using (SolidBrush clear = new SolidBrush(Color.Transparent))
+                    g.FillRectangle(clear, dirty);
+                g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
+
+                if (_editMode) DrawEditBackdrop(g, w, h);
+                DrawStick(g);
+                for (int i = 0; i < _cfg.Buttons.Count; i++) DrawButton(g, _cfg.Buttons[i], i);
+                if (_editMode) DrawEditHints(g, w, h);
+                else if (_status.Length > 0) DrawStatus(g, w, h);
+            }
+
+            PushLayered(_canvas, dirty);
         }
 
         private void DumpAlpha(Bitmap bmp)
@@ -2450,6 +2496,7 @@ namespace TouchKeys
                     _dragging = true;
                     if (id == -1) Native.SetCapture(Handle);
                 }
+                InvalidateAll();
                 RequestRender();
                 return;
             }
@@ -2492,6 +2539,7 @@ namespace TouchKeys
 
                 _cfg.Stick.BeginGrab(p);
                 Recompute();
+                MarkDirty(StickDirtyRect());
                 RequestRender();
             }
         }
@@ -2528,6 +2576,7 @@ namespace TouchKeys
                         Flash("已锁定：持续 " + KeyNames.ToName(_cfg.Stick.KeyLock));
                     }
                     Recompute();
+                    MarkDirty(StickDirtyRect());
                     RequestRender();
                     return;
                 }
@@ -2593,6 +2642,7 @@ namespace TouchKeys
                     _cfg.Stick.Release();
                 }
                 Recompute();
+                MarkDirty(StickDirtyRect());
                 RequestRender();
                 return;
             }

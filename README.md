@@ -8,6 +8,12 @@ VirtualStickPro 是一款面向 Windows 触屏设备的屏幕虚拟摇杆与自�
 
 ---
 
+## 下载
+
+[VirtualStickPro V0.2（Windows 压缩包）](VirtualStickProV0.2.zip)包含程序、默认配置、启动脚本和源码。
+
+---
+
 ## 快速开始
 
 双击 **`启动.bat`**，或直接运行 `TouchKeys.exe`。
