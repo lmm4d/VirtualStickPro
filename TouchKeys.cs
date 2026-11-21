@@ -1459,6 +1459,12 @@ namespace TouchKeys
                     button.AnimationTimer = null;
                 }
             }
+            if (_lockAnimationTimer != null)
+            {
+                _lockAnimationTimer.Stop();
+                _lockAnimationTimer.Dispose();
+                _lockAnimationTimer = null;
+            }
             Native.UnregisterHotKey(Handle, HotkeyId);
             Native.UnregisterHotKey(Handle, ToggleHotkeyId);
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); _tray = null; }
@@ -1478,6 +1484,8 @@ namespace TouchKeys
         private bool _renderPending;         // 已排队但还没画
         private Point _lastKnobPos = new Point(-1, -1);
         private bool _lastLocked;
+        private Timer _lockAnimationTimer;
+        private double _lockPressScale = 1.0;
 
         /// <summary>某个按钮所占的区域（留余量给投影和描边）。</summary>
         private Rectangle ButtonDirtyRect(int index)
@@ -1530,6 +1538,44 @@ namespace TouchKeys
                 }
             };
             button.AnimationTimer = timer;
+            timer.Start();
+        }
+
+        /// <summary>锁扣点按时轻微缩放并回弹，提供明确的触摸反馈。</summary>
+        private void AnimateLockButton()
+        {
+            if (_lockAnimationTimer != null)
+            {
+                _lockAnimationTimer.Stop();
+                _lockAnimationTimer.Dispose();
+                _lockAnimationTimer = null;
+            }
+
+            int step = 0;
+            Timer timer = new Timer();
+            timer.Interval = 16;
+            timer.Tick += delegate
+            {
+                step++;
+                double t = Math.Min(1.0, step / 12.0);
+                if (t < 0.35)
+                    _lockPressScale = 1.0 - 0.18 * (t / 0.35);
+                else if (t < 0.70)
+                    _lockPressScale = 0.82 + 0.26 * ((t - 0.35) / 0.35);
+                else
+                    _lockPressScale = 1.08 - 0.08 * ((t - 0.70) / 0.30);
+
+                MarkDirty(StickDirtyRect());
+                RequestRender();
+                if (t >= 1.0)
+                {
+                    _lockPressScale = 1.0;
+                    timer.Stop();
+                    timer.Dispose();
+                    _lockAnimationTimer = null;
+                }
+            };
+            _lockAnimationTimer = timer;
             timer.Start();
         }
 
@@ -1983,6 +2029,12 @@ namespace TouchKeys
         {
             StickItem s = _cfg.Stick;
             Rectangle r = s.LockBounds;
+            int cx = r.X + r.Width / 2;
+            int cy = r.Y + r.Height / 2;
+            int scaledWidth = Math.Max(1, (int)(r.Width * _lockPressScale));
+            int scaledHeight = Math.Max(1, (int)(r.Height * _lockPressScale));
+            r = new Rectangle(cx - scaledWidth / 2, cy - scaledHeight / 2,
+                scaledWidth, scaledHeight);
 
             using (SolidBrush sh = new SolidBrush(Color.FromArgb(Alpha(40), 0, 0, 0)))
                 g.FillEllipse(sh, new Rectangle(r.X + 1, r.Y + 3, r.Width, r.Height));
@@ -1998,8 +2050,8 @@ namespace TouchKeys
                 g.DrawEllipse(p, r);
 
             // 画一把小锁：锁体 + 锁梁
-            int cx = r.X + r.Width / 2;
-            int cy = r.Y + r.Height / 2;
+            cx = r.X + r.Width / 2;
+            cy = r.Y + r.Height / 2;
 
             using (Pen lp = new Pen(Color.FromArgb(Alpha(240), 255, 255, 255), 2.2f))
             {
@@ -2518,9 +2570,21 @@ namespace TouchKeys
                 }
             }
 
-            // 锁定按钮本身：点一下不产生任何效果（按需求：直接点击无效）
-            // 只有把摇杆拖到它上面才会锁定。所以这里不做任何事。
-            if (_cfg.Stick.LockHitTest(p)) return;
+            // 锁扣点按始终给出动画；未锁定时不切换状态，锁定时点按解锁。
+            if (_cfg.Stick.LockHitTest(p))
+            {
+                AnimateLockButton();
+                if (_cfg.Stick.Locked)
+                {
+                    _cfg.Stick.Locked = false;
+                    _cfg.Stick.Release();
+                    Flash("已解除锁定");
+                    Recompute();
+                    MarkDirty(StickDirtyRect());
+                    RequestRender();
+                }
+                return;
+            }
 
             // 摇杆是"单指专属"的，但按钮可以同时有多指。
             // 这里只在没人占用摇杆时抢占（_stickTouch == -2）。
